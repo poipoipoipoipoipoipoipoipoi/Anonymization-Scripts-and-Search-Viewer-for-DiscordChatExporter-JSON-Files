@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🔍 Redacted Message Viewer</title>
+  <style>
+    :root {
+      --bg-color: #f9f9f9;
+      --text-color: #000;
+      --box-bg: #fff;
+      --box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+      --highlight-bg: yellow;
+      --tooltip-bg: #1e1e1e;
+      --tooltip-color: #e0e0e0;
+      --tooltip-shadow: 0 0 16px rgba(0, 0, 0, 0.8);
+      --button-bg: #f5f5f5;
+      --button-border: #ccc;
+      --button-hover: #e0e0e0;
+
+      --input-bg: #fff;
+      --input-color: #000;
+      --input-border: #ccc;
+      --matched-line-bg: #ffffe0;
+
+      --scrollbar-track: #e0e0e0;
+      --scrollbar-thumb: #bbb;
+    }
+
+    body.dark {
+      --bg-color: #1e1e1e;
+      --text-color: #e0e0e0;
+      --box-bg: #121212;
+      --box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+      --highlight-bg: blue;
+      --tooltip-bg: #f9f9f9;
+      --tooltip-color: #000;
+      --tooltip-shadow: 0 0 16px rgba(255, 255, 255, 0.3);
+      --button-bg: #2a2a2a;
+      --button-border: #444;
+      --button-hover: #333;
+
+      --input-bg: #121212;
+      --input-color: #e0e0e0;
+      --input-border: #444;
+      --matched-line-bg: #12121e;
+
+      --scrollbar-track: #333;
+      --scrollbar-thumb: #555;
+    }
+
+    .slow-transition {
+      transition: box-shadow 20s;
+    }
+
+    body.dark #themeToggle {
+      box-shadow: 0 0 40px rgba(249, 249, 249, 0.3);
+    }
+
+    body:not(.dark) #themeToggle {
+      box-shadow: 0 0 40px rgba(30, 30, 30, 1);
+    }
+
+    body.dark #themeToggle:hover {
+      background-color: #333;
+    }
+
+    body:not(.dark) #themeToggle:hover {
+      background-color: #e0e0e0;
+    }
+
+    * {
+      box-sizing: border-box;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
+
+    html {
+      scrollbar-width: auto;
+    }
+
+    body {
+      font-family: sans-serif;
+      padding: 1em;
+      background: var(--bg-color);
+      color: var(--text-color);
+      max-width: 1000px;
+      margin: auto;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    #themeToggle {
+      float: right;
+      margin-top: -2em;
+      margin-bottom: 1em;
+    }
+
+    #search {
+      width: 100%;
+      padding: 0.6em;
+      font-size: 1.1em;
+      margin-bottom: 1.5em;
+      background-color: var(--input-bg);
+      color: var(--input-color);
+      border: 1px solid var(--input-border);
+      border-radius: 4px;
+      transition: background-color 0.3s, color 0.3s, border 0.3s;
+    }
+
+    #titleIcon {
+      display: inline-flex;
+      width: 1.6em;
+      align-items: center;
+      justify-content: left;
+    }
+
+    .highlight {
+      background-color: var(--highlight-bg);
+      font-weight: bold;
+      white-space: normal;
+    }
+
+    .message-wrapper {
+      display: flex;
+      gap: 1em;
+      margin-bottom: 2em;
+      align-items: stretch;
+    }
+
+    .message-box {
+      background: var(--box-bg);
+      border-radius: 8px;
+      padding: 1em;
+      box-shadow: var(--box-shadow);
+      flex: 1;
+      position: relative;
+      overflow: visible;
+      overflow-y: auto;
+      max-height: 320px;
+      scroll-behavior: smooth;
+    }
+
+    .context-line {
+      margin: 0.4em 0;
+      padding-left: 1em;
+      border-left: 4px solid #767676;
+      position: relative;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .matched-line {
+      font-weight: bold;
+      background: var(--matched-line-bg);
+    }
+
+    .buttons-right {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 140px;
+      gap: 1em;
+      user-select: none;
+    }
+
+    .buttons-top,
+    .buttons-bottom {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5em;
+    }
+
+    button {
+      width: 140px;
+      height: 36px;
+      font-size: 0.95em;
+      cursor: pointer;
+      border-radius: 4px;
+      border: 1px solid var(--button-border);
+      background: var(--button-bg);
+      color: var(--text-color);
+      transition: background-color 0.2s ease;
+      user-select: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    button:hover {
+      background: var(--button-hover);
+    }
+
+    .export-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .meta-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.6em;
+      height: 1.6em;
+      background-color: rgba(118, 118, 118, 0.15);
+      border-radius: 50%;
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tooltip {
+      font-family: Consolas, "Courier New", monospace;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.2s ease-in-out;
+      position: fixed;
+      display: block; /* this is key */
+      background: var(--tooltip-bg);
+      color: var(--tooltip-color);
+      padding: 0.6em;
+      font-size: 0.85em;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      max-width: 90vw;
+      width: fit-content;
+      word-break: break-word;
+      z-index: 9999;
+      pointer-events: none;
+      box-shadow: var(--tooltip-shadow);
+    }
+
+    .tooltip.visible {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 5px;
+      border-style: solid;
+      border-color: var(--tooltip-bg) transparent transparent transparent;
+    }
+
+    .tooltip-header {
+      font-family: Consolas, "Courier New", monospace;
+      font-style: italic;
+      margin-bottom: 0.4em;
+    }
+
+    .tooltip pre {
+      margin: 0;
+      overflow-x: auto;
+      max-width: 100%;
+      font-family: Consolas, "Courier New", monospace;
+      margin-bottom: 0.4em;
+    }
+
+    .header {
+      display: flex;
+      align-items: baseline;         /* vertical alignment */
+      justify-content: space-between; /* or use 'flex-start' if you don't want space between */
+    }
+
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><span id="titleIcon">🔍</span>Echoing Oinking</h1>
+    <button id="themeToggle" class="slow-transition">🌓</button>
+  </div>
+  <input id="search" type="text" placeholder="Search messages..." />
+  <div id="results"><p>Enter a search term above.</p></div>
+
+  <script src="fuse.min.js"></script>
+  <script>
+    // Theme toggling
+    const themeToggle = document.getElementById('themeToggle');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const titleIcon = document.getElementById('titleIcon');
+
+    // Define emojis for light/dark
+    const emojiLight = "🔍";
+    const emojiDark = "💡";
+
+    // Function to update emoji after a delay
+    function updateThemeEmoji() {
+      const isDark = document.body.classList.contains('dark');
+      titleIcon.textContent = isDark ? emojiDark : emojiLight;
+    }
+
+    // Set theme and icon on load if system prefers dark
+    if (prefersDark) {
+      document.body.classList.add('dark');
+      updateThemeEmoji();
+    }
+
+    // Toggle dark mode and update icon
+    themeToggle.onclick = () => {
+      document.body.classList.toggle('dark');
+      updateThemeEmoji();
+    };
+
+    // Your existing JS remains unchanged below...
+    const searchInput = document.getElementById("search");
+    const resultsDiv = document.getElementById("results");
+
+    let messages = [];
+    let matches = [];
+    let fuse;
+    const DEFAULT_CONTEXT = 3;
+
+    fetch("messages.json")
+      .then(res => res.json())
+      .then(json => {
+        messages = json.messages || [];
+        fuse = new Fuse(messages, {
+          keys: ["content"],
+          includeScore: true,
+          threshold: 0.4
+        });
+      })
+      .catch(() => {
+        resultsDiv.innerHTML = "<p style='color:red;'>Failed to load messages.json. Run on a web server.</p>";
+      });
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function highlightText(text, query) {
+      if (!query) return escapeHtml(text);
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escapedQuery, 'gi');
+      let lastIndex = 0;
+      let result = '';
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        const fullMatch = match[0];
+        const trimmed = fullMatch.trim();
+        const leading = fullMatch.slice(0, fullMatch.indexOf(trimmed));
+        const trailing = fullMatch.slice(fullMatch.indexOf(trimmed) + trimmed.length);
+        result += escapeHtml(text.slice(lastIndex, match.index));
+        result += escapeHtml(leading);
+        result += `<span class="highlight">${escapeHtml(trimmed)}</span>`;
+        result += escapeHtml(trailing);
+        lastIndex = regex.lastIndex;
+      }
+      result += escapeHtml(text.slice(lastIndex));
+      return result;
+    }
+
+    function isNonEmpty(data) {
+      return Array.isArray(data) ? data.length > 0 :
+             typeof data === "object" && data !== null ? Object.keys(data).length > 0 : false;
+    }
+
+    function createMetaIcon(symbol, jsonData, label, keyName) {
+      const span = document.createElement("span");
+      span.className = "meta-icon";
+      span.textContent = symbol;
+
+      const tooltip = document.createElement("div");
+      tooltip.className = "tooltip";
+      tooltip.style.position = "fixed"; // Important!
+
+      const countMatch = label.match(/\((\d+)\)/);
+      const count = countMatch ? countMatch[1] : "1";
+
+      const fullObject = {};
+      fullObject[keyName] = jsonData;
+      const jsonStr = JSON.stringify(fullObject, null, 2);
+
+      tooltip.innerHTML = `<div class="tooltip-header">Click to copy<br>---${count}---</div>`;
+      const pre = document.createElement("pre");
+      pre.textContent = jsonStr;
+      tooltip.appendChild(pre);
+      document.body.appendChild(tooltip); // <- Moved to <body>
+
+      span.addEventListener("mouseenter", () => {
+        tooltip.style.display = "block"; // Make it visible to measure
+        const rect = span.getBoundingClientRect();
+        const tooltipHeight = tooltip.offsetHeight;
+        const tooltipWidth = tooltip.offsetWidth;
+        tooltip.style.left = `${rect.left + rect.width / 2 - tooltipWidth / 2}px`;
+        tooltip.style.top = `${rect.top - tooltipHeight - 8}px`;
+        tooltip.classList.add("visible");
+      });
+
+      span.addEventListener("mouseleave", () => {
+        tooltip.classList.remove("visible");
+        tooltip.style.display = "none";
+      });
+
+      span.onclick = () => {
+        navigator.clipboard.writeText(jsonStr)
+          .then(() => alert("Copied to clipboard"))
+          .catch(() => alert("Failed to copy"));
+      };
+
+      return span;
+    }
+
+    function renderMatches() {
+      resultsDiv.innerHTML = "";
+      if (matches.length === 0) {
+        resultsDiv.innerHTML = "<p>No results found.</p>";
+        return;
+      }
+
+      matches.forEach(({ index }) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "message-wrapper";
+
+        const buttonsRightDiv = document.createElement("div");
+        buttonsRightDiv.className = "buttons-right";
+
+        const buttonsTopDiv = document.createElement("div");
+        buttonsTopDiv.className = "buttons-top";
+
+        const buttonsBottomDiv = document.createElement("div");
+        buttonsBottomDiv.className = "buttons-bottom";
+
+        const box = document.createElement("div");
+        box.className = "message-box";
+
+        let ctxTop = DEFAULT_CONTEXT;
+        let ctxBottom = DEFAULT_CONTEXT;
+
+        const contextDiv = document.createElement("div");
+
+        function renderContext() {
+          const oldScrollHeight = box.scrollHeight;
+          const oldScrollTop = box.scrollTop;
+
+          contextDiv.innerHTML = "";
+
+          const start = Math.max(0, index - ctxTop);
+          const end = Math.min(messages.length - 1, index + ctxBottom);
+
+          for (let i = start; i <= end; i++) {
+            const msg = messages[i];
+            const line = document.createElement("div");
+            line.className = "context-line";
+            if (i === index) line.classList.add("matched-line");
+
+            const contentSpan = document.createElement("span");
+            const rawContent = (msg.content && msg.content.trim()) ? msg.content : "(no text content)";
+            contentSpan.innerHTML = highlightText(rawContent, searchInput.value.trim());
+
+            line.appendChild(contentSpan);
+
+            const metaContainer = document.createElement("span");
+            metaContainer.style.marginLeft = "8px";
+            metaContainer.style.display = "inline-flex";
+            metaContainer.style.gap = "6px";
+            metaContainer.style.alignItems = "center";
+
+            const addIcon = (symbol, data, label, keyName) => {
+              if (isNonEmpty(data)) {
+                metaContainer.appendChild(createMetaIcon(symbol, data, `${label} (${Array.isArray(data) ? data.length : 1})`, keyName));
+              }
+            };
+
+            addIcon("📎", msg.attachments, "Attachments", "attachments");
+            addIcon("🔗", msg.embeds, "Embeds", "embeds");
+            addIcon("🖼️", msg.stickers, "Stickers", "stickers");
+            addIcon("😶", msg.reactions, "Reactions", "reactions");
+            addIcon("🔔", msg.mentions, "Mentions", "mentions");
+            addIcon("↪️", msg.reference, "Reference", "reference");
+            addIcon("❓", msg.inlineEmojis, "Inline Emojis", "inlineEmojis");
+
+            if (metaContainer.children.length > 0) {
+              line.appendChild(metaContainer);
+            }
+
+            contextDiv.appendChild(line);
+          }
+
+          const newScrollHeight = box.scrollHeight;
+          const heightDiff = newScrollHeight - oldScrollHeight;
+
+          if (renderContext.lastCtxBottom !== undefined && ctxBottom !== renderContext.lastCtxBottom) {
+            box.scrollTop = oldScrollTop + heightDiff;
+          }
+
+          renderContext.lastCtxBottom = ctxBottom;
+        }
+
+        // Top buttons
+        const expandTopBtn = document.createElement("button");
+        expandTopBtn.textContent = "⬆ Expand Top";
+        expandTopBtn.title = "Expand Top Context";
+        expandTopBtn.onclick = () => { ctxTop++; renderContext(); };
+
+        const retractTopBtn = document.createElement("button");
+        retractTopBtn.textContent = "🔽 Retract Top";
+        retractTopBtn.title = "Retract Top Context";
+        retractTopBtn.onclick = () => { if (ctxTop > 0) ctxTop--; renderContext(); };
+
+        buttonsTopDiv.appendChild(expandTopBtn);
+        buttonsTopDiv.appendChild(retractTopBtn);
+
+        // Bottom buttons
+        const expandBottomBtn = document.createElement("button");
+        expandBottomBtn.textContent = "⬇ Expand Bottom";
+        expandBottomBtn.title = "Expand Bottom Context";
+        expandBottomBtn.onclick = () => { ctxBottom++; renderContext(); };
+
+        const retractBottomBtn = document.createElement("button");
+        retractBottomBtn.textContent = "🔼 Retract Bottom";
+        retractBottomBtn.title = "Retract Bottom Context";
+        retractBottomBtn.onclick = () => { if (ctxBottom > 0) ctxBottom--; renderContext(); };
+
+        buttonsBottomDiv.appendChild(retractBottomBtn);
+        buttonsBottomDiv.appendChild(expandBottomBtn);
+
+        // Export button centered vertically between top and bottom buttons
+        const exportContainer = document.createElement("div");
+        exportContainer.className = "export-container";
+
+        const exportBtn = document.createElement("button");
+        exportBtn.textContent = "💾 Export";
+        exportBtn.title = "Export this message range as JSON";
+        exportBtn.onclick = () => {
+          const start = Math.max(0, index - ctxTop);
+          const end = Math.min(messages.length - 1, index + ctxBottom);
+          const exportMessages = messages.slice(start, end + 1);
+          const blob = new Blob([JSON.stringify(exportMessages, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `search_result_${index}_${start}-${end}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        exportContainer.appendChild(exportBtn);
+
+        buttonsRightDiv.appendChild(buttonsTopDiv);
+        buttonsRightDiv.appendChild(exportContainer);
+        buttonsRightDiv.appendChild(buttonsBottomDiv);
+
+        wrapper.appendChild(box);
+        wrapper.appendChild(buttonsRightDiv);
+
+        box.appendChild(contextDiv);
+
+        resultsDiv.appendChild(wrapper);
+
+        renderContext();
+      });
+    }
+
+    let debounceTimer;
+    searchInput.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const query = searchInput.value.trim();
+        if (query.length < 3) {
+          matches = [];
+          resultsDiv.innerHTML = "<p>Enter a search term above.</p>";
+          return;
+        }
+        matches = fuse.search(query).map(m => ({ index: m.refIndex }));
+        renderMatches();
+      }, 300);
+    });
+  </script>
+</body>
+</html>
