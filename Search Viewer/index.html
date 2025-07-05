@@ -358,8 +358,9 @@
     }
 
     function isNonEmpty(data) {
-      return Array.isArray(data) ? data.length > 0 :
-             typeof data === "object" && data !== null ? Object.keys(data).length > 0 : false;
+      if (Array.isArray(data)) return data.length > 0;
+      if (typeof data === "object" && data !== null) return Object.keys(data).length > 0;
+      return Boolean(data); // Accepts strings, numbers, etc.
     }
 
     function createMetaIcon(symbol, jsonData, label, keyName) {
